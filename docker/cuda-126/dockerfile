@@ -1,0 +1,16 @@
+FROM ghcr.io/astral-sh/uv:bookworm-slim
+
+# OS 套件（torchaudio 常用到的 ffmpeg/libsndfile）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    vim git wget p7zip-full ffmpeg libsndfile1 unzip 
+
+RUN apt-get update && apt-get install -y ca-certificates
+
+WORKDIR /app
+
+# 先複製 metadata 以吃到快取
+COPY pyproject.toml uv.lock ./
+
+RUN uv sync --frozen --no-dev 
+
+RUN /app/.venv/bin/jupyter --version

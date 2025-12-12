@@ -1,0 +1,34 @@
+services:
+  jupyter:
+    container_name: ml-jupyter
+    build:
+      context: ./docker/cuda-126
+      dockerfile: Dockerfile
+    working_dir: /app
+    entrypoint: ["/app/.venv/bin/jupyter", "lab"]
+    command:
+      - --ip=0.0.0.0
+      - --port=${CONTAINER_PORT}
+      - --no-browser
+      # 若改用非 root 使用者即可移除
+      - --allow-root                   
+      - --IdentityProvider.token=${JUPYTER_TOKEN}
+      - --ServerApp.root_dir=${ROOT_DIR}
+      # - --ServerApp.certfile=/ssl/cert.pem
+      # - --ServerApp.keyfile=/ssl/key.pem
+    ports:
+      - "${HOST_PORT}:${CONTAINER_PORT}"
+    environment:
+      JUPYTER_TOKEN: ${JUPYTER_TOKEN}
+    volumes:
+      - ./notebooks:/jupyter
+      - ./notebooks/.cache:/root/.cache
+      - ./ssl:/ssl
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    shm_size: "2g"

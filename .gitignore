@@ -1,0 +1,21 @@
+# Environment
+.env
+
+# SSL certificates
+ssl/
+
+# Notebooks data
+notebooks/
+
+# Python virtual environment
+docker/**/.venv/
+**/.venv/
+*.pyc
+__pycache__/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
