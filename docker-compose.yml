@@ -1,34 +1,58 @@
+# JupyterLab with CUDA GPU Support
+#
+# Required environment variables (define in .env file):
+#   - HOST_PORT: Port exposed on the host machine
+#   - CONTAINER_PORT: Port JupyterLab listens on inside the container
+#   - JUPYTER_TOKEN: Authentication token for accessing JupyterLab
+#   - ROOT_DIR: Root directory for JupyterLab file browser
+
 services:
   jupyter:
     container_name: ml-jupyter
     build:
-      context: ./docker/cuda-126
-      dockerfile: Dockerfile
-    working_dir: /app
+      context: ./docker/cuda-126      # Build context directory
+      dockerfile: Dockerfile          # Dockerfile path relative to context
+    working_dir: /app                 # Working directory inside the container
+
+    # Use the virtual environment's Jupyter binary
     entrypoint: ["/app/.venv/bin/jupyter", "lab"]
+
+    # JupyterLab server configuration
     command:
-      - --ip=0.0.0.0
-      - --port=${CONTAINER_PORT}
-      - --no-browser
-      # 若改用非 root 使用者即可移除
-      - --allow-root                   
-      - --IdentityProvider.token=${JUPYTER_TOKEN}
-      - --ServerApp.root_dir=${ROOT_DIR}
+      - --ip=0.0.0.0                  # Listen on all network interfaces
+      - --port=${CONTAINER_PORT}      # Server port
+      - --no-browser                  # Don't attempt to open a browser
+      - --allow-root                  # Allow running as root (remove if using non-root user)
+      - --IdentityProvider.token=${JUPYTER_TOKEN}           # Token-based authentication
+      - --ServerApp.root_dir=${ROOT_DIR}                    # Root directory for file browser
+      - --FileContentsManager.delete_to_trash=True          # Move deleted files to trash instead of permanent deletion
+      # SSL/TLS configuration (uncomment to enable HTTPS)
       # - --ServerApp.certfile=/ssl/cert.pem
       # - --ServerApp.keyfile=/ssl/key.pem
+
+    # Port mapping: HOST_PORT -> CONTAINER_PORT
     ports:
       - "${HOST_PORT}:${CONTAINER_PORT}"
+
+    # Environment variables passed to the container
     environment:
       JUPYTER_TOKEN: ${JUPYTER_TOKEN}
+
+    # Volume mounts
     volumes:
-      - ./notebooks:/jupyter
-      - ./notebooks/.cache:/root/.cache
-      - ./ssl:/ssl
+      - ./notebooks:/jupyter                          # Notebook storage directory
+      - ./notebooks/.cache:/root/.cache               # Cache directory (pip, huggingface, etc.)
+      - ./ssl:/ssl                                    # SSL certificates directory
+
+    # GPU configuration - requires NVIDIA Container Toolkit
     deploy:
       resources:
         reservations:
           devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-    shm_size: "2g"
+            - driver: nvidia          # Use NVIDIA GPU driver
+              count: all              # Reserve all available GPUs
+              capabilities: [gpu]     # Request GPU compute capability
+
+    # Shared memory size - increase for large batch sizes or multi-process data loading
+    ipc: host
+    # shm_size: "2g"

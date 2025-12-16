@@ -1,16 +1,41 @@
+# =============================================================================
+# JupyterLab with CUDA 12.6 Support
+# =============================================================================
+# Base image: Astral's uv package manager on Debian Bookworm (slim)
+# This provides fast Python dependency management with uv
+# =============================================================================
 FROM ghcr.io/astral-sh/uv:bookworm-slim
 
-# OS 套件（torchaudio 常用到的 ffmpeg/libsndfile）
+# -----------------------------------------------------------------------------
+# System Dependencies
+# -----------------------------------------------------------------------------
+# Install OS packages commonly needed for ML/audio processing:
+#   - vim: Text editor for quick file edits
+#   - git: Version control for cloning repositories
+#   - wget: Download files from the web
+#   - p7zip-full: Archive extraction (7z, zip, etc.)
+#   - ffmpeg: Audio/video processing (required by torchaudio)
+#   - libsndfile1: Audio file I/O library (required by torchaudio)
+#   - unzip: Extract zip archives
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    vim git wget p7zip-full ffmpeg libsndfile1 unzip 
+    vim git wget p7zip-full ffmpeg libsndfile1 unzip
 
+# Install CA certificates for HTTPS connections
 RUN apt-get update && apt-get install -y ca-certificates
 
+# -----------------------------------------------------------------------------
+# Python Environment Setup
+# -----------------------------------------------------------------------------
 WORKDIR /app
 
-# 先複製 metadata 以吃到快取
+# Copy dependency files first to leverage Docker layer caching
+# Changes to source code won't invalidate the dependency layer
 COPY pyproject.toml uv.lock ./
 
-RUN uv sync --frozen --no-dev 
+# Install Python dependencies using uv
+#   --frozen: Use exact versions from uv.lock (reproducible builds)
+#   --no-dev: Skip development dependencies (smaller image)
+RUN uv sync --frozen --no-dev
 
+# Verify JupyterLab installation
 RUN /app/.venv/bin/jupyter --version
