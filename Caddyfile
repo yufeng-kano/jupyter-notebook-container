@@ -1,0 +1,22 @@
+# TLS termination and reverse proxy for code-server. DOMAIN and ACME_EMAIL come from .env.
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	# nginx-proxy only forwards 443, so HTTP-01 is impossible; TLS-ALPN-01 rides the
+	# same connection the site is served on. Requires the DNS record to be grey-cloud.
+	tls {
+		issuer acme {
+			email {$ACME_EMAIL}
+			disable_http_challenge
+		}
+	}
+
+	# WebSockets (editor, terminal, kernels) are proxied transparently.
+	reverse_proxy code-server:8080
+
+	log {
+		output stdout
+	}
+}

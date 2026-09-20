@@ -1,5 +1,5 @@
 # =============================================================================
-# zsh configuration for the JupyterLab terminal
+# zsh configuration for the code-server terminal
 # =============================================================================
 
 # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
@@ -32,7 +32,7 @@ source $ZSH/oh-my-zsh.sh
 # Project environment
 # -----------------------------------------------------------------------------
 # Activate the uv-managed virtualenv so python/pip resolve to the same
-# interpreter JupyterLab's kernels use.
+# interpreter the notebook kernels use.
 [[ ! -f /app/.venv/bin/activate ]] || source /app/.venv/bin/activate
 
 alias dfh='df -h -x tmpfs -x devtmpfs'

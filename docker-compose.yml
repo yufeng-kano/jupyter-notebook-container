@@ -1,53 +1,47 @@
-# JupyterLab with CUDA GPU Support
+# code-server with CUDA GPU support, behind its own Caddy.
 #
-# Required environment variables (define in .env file):
-#   - HOST_PORT: Port exposed on the host machine
-#   - CONTAINER_PORT: Port JupyterLab listens on inside the container
-#   - JUPYTER_TOKEN: Authentication token for accessing JupyterLab
-#   - ROOT_DIR: Root directory for JupyterLab file browser
+#   nginx-proxy --proxy--> jupyter-caddy --default--> jupyter-code-server
+#
+# No service publishes a host port. Traffic arrives through ../network/nginx-proxy
+# (SNI passthrough on 443); Caddy owns the certificate (TLS-ALPN-01, grey-cloud DNS).
+# VS Code webviews (notebook outputs) need a secure context, so plain HTTP is not
+# offered. All tunables live in .env (see .env.example).
 
 services:
-  jupyter:
-    container_name: ml-jupyter
+  code-server:
+    container_name: jupyter-code-server
     build:
       context: ./docker/cuda-126      # Build context directory
       dockerfile: Dockerfile          # Dockerfile path relative to context
+    restart: unless-stopped
     # Working directory inside the container. The terminal inherits this as its
-    # starting directory, so point it at the notebook root instead of /app.
+    # starting directory, so point it at the workspace root instead of /app.
     working_dir: ${ROOT_DIR}
 
-    # Use the virtual environment's Jupyter binary
-    entrypoint: ["/app/.venv/bin/jupyter", "lab"]
-
-    # JupyterLab server configuration
+    entrypoint: ["code-server"]
     command:
-      - --ip=0.0.0.0                  # Listen on all network interfaces
-      - --port=${CONTAINER_PORT}      # Server port
-      - --no-browser                  # Don't attempt to open a browser
-      - --allow-root                  # Allow running as root (remove if using non-root user)
-      - --IdentityProvider.token=${JUPYTER_TOKEN}           # Token-based authentication
-      - --ServerApp.root_dir=${ROOT_DIR}                    # Root directory for file browser
-      - --FileContentsManager.delete_to_trash=True          # Move deleted files to trash instead of permanent deletion
-      # Use zsh (oh-my-zsh + Powerlevel10k, configured in the image) for terminals
-      - --ServerApp.terminado_settings={"shell_command":["/bin/zsh"]}
-      # SSL/TLS configuration (uncomment to enable HTTPS)
-      # - --ServerApp.certfile=/ssl/cert.pem
-      # - --ServerApp.keyfile=/ssl/key.pem
-
-    # Port mapping: HOST_PORT -> CONTAINER_PORT
-    ports:
-      - "${HOST_PORT}:${CONTAINER_PORT}"
+      - --bind-addr=0.0.0.0:8080      # Only reachable from Caddy; no host port
+      - --auth=password               # Password comes from $PASSWORD
+      - --extensions-dir=/opt/code-server/extensions  # Persisted volume, seeded from the image
+      - --locale=zh-tw
+      - --disable-telemetry
+      - --disable-update-check        # Version is pinned in the dockerfile
+      - ${ROOT_DIR}                   # Folder opened by default
 
     # Environment variables passed to the container
     environment:
-      JUPYTER_TOKEN: ${JUPYTER_TOKEN}
+      PASSWORD: ${PASSWORD:?PASSWORD is required}
       HUGGINGFACE_HUB_TOKEN: ${HUGGINGFACE_HUB_TOKEN}
 
     # Volume mounts
     volumes:
-      - ./notebooks:/jupyter                          # Notebook storage directory
-      - ./notebooks/.cache:/root/.cache               # Cache directory (pip, huggingface, etc.)
-      - ./ssl:/ssl                                    # SSL certificates directory
+      - ./notebooks:/jupyter                          # Workspace / notebook storage
+      # Both are seeded from the image when first created, then owned by the volume, so
+      # anything changed at runtime survives rebuilds like on a real machine.
+      #   home: zsh config + history, code-server settings, Claude Code login, git/ssh config, ...
+      - home:/root
+      - code_server_extensions:/opt/code-server/extensions    # Extensions
+      - ./notebooks/.cache:/root/.cache               # Cache directory (uv, huggingface, etc.)
 
     # GPU configuration - requires NVIDIA Container Toolkit
     deploy:
@@ -61,3 +55,41 @@ services:
     # Shared memory size - increase for large batch sizes or multi-process data loading
     ipc: host
     # shm_size: "2g"
+
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # default network: needs egress for pip/uv, huggingface.co, Open VSX
+
+  caddy:
+    image: caddy:2.11-alpine
+    container_name: jupyter-caddy
+    restart: unless-stopped
+    depends_on:
+      - code-server
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN is required}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL is required}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+    networks:
+      - proxy
+      - default
+
+volumes:
+  home:
+  code_server_extensions:
+  caddy_data:
+  caddy_config:
+
+networks:
+  proxy:
+    external: true

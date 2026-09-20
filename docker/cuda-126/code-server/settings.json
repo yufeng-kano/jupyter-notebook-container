@@ -1,0 +1,15 @@
+{
+    // Kernels and the Python extension use the uv-managed environment
+    "python.defaultInterpreterPath": "/app/.venv/bin/python",
+    // ty provides language features; disable the Python extension's own server
+    "python.languageServer": "None",
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff"
+    },
+    "notebook.defaultFormatter": "charliermarsh.ruff",
+    "terminal.integrated.defaultProfile.linux": "zsh",
+    // Powerlevel10k needs a Nerd Font installed on the client machine
+    "terminal.integrated.fontFamily": "MesloLGS NF",
+    "security.workspace.trust.enabled": false,
+    "telemetry.telemetryLevel": "off"
+}

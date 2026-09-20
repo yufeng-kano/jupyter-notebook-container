@@ -1,5 +1,5 @@
 # =============================================================================
-# JupyterLab with CUDA 12.6 Support
+# code-server with CUDA 12.6 Support
 # =============================================================================
 # Base image: Astral's uv package manager on Debian Bookworm (slim)
 # This provides fast Python dependency management with uv
@@ -17,7 +17,7 @@ FROM ghcr.io/astral-sh/uv:bookworm-slim
 #   - ffmpeg: Audio/video processing (required by torchaudio)
 #   - libsndfile1: Audio file I/O library (required by torchaudio)
 #   - unzip: Extract zip archives
-#   - zsh: Interactive shell used by the JupyterLab terminal
+#   - zsh: Interactive shell used by the code-server terminal
 #   - locales: Provides en_US.UTF-8, required for Powerlevel10k glyphs
 RUN apt-get update && apt-get install -y --no-install-recommends \
     vim git wget p7zip-full ffmpeg libsndfile1 unzip curl zsh locales
@@ -37,8 +37,8 @@ ENV LANG=en_US.UTF-8 \
 # -----------------------------------------------------------------------------
 # Shell Environment (zsh + oh-my-zsh + Powerlevel10k)
 # -----------------------------------------------------------------------------
-# JupyterLab's terminal runs whatever ServerApp.terminado_settings points at
-# (see docker-compose.yml). Everything below prepares that shell.
+# code-server's integrated terminal launches $SHELL. Everything below prepares
+# that shell.
 ENV ZSH=/root/.oh-my-zsh \
     ZSH_CUSTOM=/root/.oh-my-zsh/custom \
     SHELL=/bin/zsh \
@@ -73,10 +73,52 @@ WORKDIR /app
 # Changes to source code won't invalidate the dependency layer
 COPY pyproject.toml uv.lock ./
 
+# Keep the uv-managed interpreter out of /root: the home directory is a persistent
+# volume at runtime (see docker-compose.yml), and /app/.venv links to the interpreter
+# by path, so a stale copy in the volume would break the venv after an image update.
+ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python \
+    UV_LINK_MODE=copy
+
 # Install Python dependencies using uv
 #   --frozen: Use exact versions from uv.lock (reproducible builds)
 #   --no-dev: Skip development dependencies (smaller image)
-RUN uv sync --frozen --no-dev
+# The cache mount keeps downloaded wheels across builds, so changing a dependency
+# does not re-download torch/tensorflow.
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev
 
-# Verify JupyterLab installation
-RUN /app/.venv/bin/jupyter --version
+# Verify the kernel the Jupyter extension will launch
+RUN /app/.venv/bin/python -m ipykernel --version
+
+# -----------------------------------------------------------------------------
+# code-server
+# -----------------------------------------------------------------------------
+# Installed after the Python layer so a version bump does not invalidate the
+# multi-GB dependency layer above.
+ARG CODE_SERVER_VERSION=4.138.0
+RUN curl -fsSL -o /tmp/code-server.deb \
+        "https://github.com/coder/code-server/releases/download/v${CODE_SERVER_VERSION}/code-server_${CODE_SERVER_VERSION}_amd64.deb" \
+    && dpkg -i /tmp/code-server.deb \
+    && rm /tmp/code-server.deb
+
+# Default extensions, installed from Open VSX. The directory is a named volume at
+# runtime (see docker-compose.yml): Docker seeds it from the image on first
+# creation only, after which extensions are installed/updated from the UI and
+# persist in the volume. The same applies to everything under /root (zsh config,
+# code-server settings, ...): the image only provides the initial contents.
+#   - ms-toolsai.jupyter / ms-python.python: notebooks, kernels from /app/.venv
+#   - astral-sh.ty: language server (completion, go-to-definition, type checking)
+#   - charliermarsh.ruff: lint + format
+#   - vscode-language-pack-zh-hant: Traditional Chinese UI
+#   - anthropic.claude-code: Claude Code
+ENV CODE_SERVER_EXTENSIONS_DIR=/opt/code-server/extensions
+RUN for ext in \
+        ms-python.python \
+        ms-toolsai.jupyter \
+        astral-sh.ty \
+        charliermarsh.ruff \
+        MS-CEINTL.vscode-language-pack-zh-hant \
+        Anthropic.claude-code; \
+    do code-server --extensions-dir "$CODE_SERVER_EXTENSIONS_DIR" --install-extension "$ext" || exit 1; done
+
+# Default user settings; part of the /root volume, so seeded on first creation only.
+COPY code-server/settings.json /root/.local/share/code-server/User/settings.json
