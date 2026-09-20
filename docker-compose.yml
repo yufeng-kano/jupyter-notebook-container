@@ -12,7 +12,9 @@ services:
     build:
       context: ./docker/cuda-126      # Build context directory
       dockerfile: Dockerfile          # Dockerfile path relative to context
-    working_dir: /app                 # Working directory inside the container
+    # Working directory inside the container. The terminal inherits this as its
+    # starting directory, so point it at the notebook root instead of /app.
+    working_dir: ${ROOT_DIR}
 
     # Use the virtual environment's Jupyter binary
     entrypoint: ["/app/.venv/bin/jupyter", "lab"]
@@ -26,6 +28,8 @@ services:
       - --IdentityProvider.token=${JUPYTER_TOKEN}           # Token-based authentication
       - --ServerApp.root_dir=${ROOT_DIR}                    # Root directory for file browser
       - --FileContentsManager.delete_to_trash=True          # Move deleted files to trash instead of permanent deletion
+      # Use zsh (oh-my-zsh + Powerlevel10k, configured in the image) for terminals
+      - --ServerApp.terminado_settings={"shell_command":["/bin/zsh"]}
       # SSL/TLS configuration (uncomment to enable HTTPS)
       # - --ServerApp.certfile=/ssl/cert.pem
       # - --ServerApp.keyfile=/ssl/key.pem
@@ -37,6 +41,7 @@ services:
     # Environment variables passed to the container
     environment:
       JUPYTER_TOKEN: ${JUPYTER_TOKEN}
+      HUGGINGFACE_HUB_TOKEN: ${HUGGINGFACE_HUB_TOKEN}
 
     # Volume mounts
     volumes:

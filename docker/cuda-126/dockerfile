@@ -17,11 +17,52 @@ FROM ghcr.io/astral-sh/uv:bookworm-slim
 #   - ffmpeg: Audio/video processing (required by torchaudio)
 #   - libsndfile1: Audio file I/O library (required by torchaudio)
 #   - unzip: Extract zip archives
+#   - zsh: Interactive shell used by the JupyterLab terminal
+#   - locales: Provides en_US.UTF-8, required for Powerlevel10k glyphs
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    vim git wget p7zip-full ffmpeg libsndfile1 unzip
+    vim git wget p7zip-full ffmpeg libsndfile1 unzip curl zsh locales
 
 # Install CA certificates for HTTPS connections
 RUN apt-get update && apt-get install -y ca-certificates
+
+# -----------------------------------------------------------------------------
+# Locale
+# -----------------------------------------------------------------------------
+# Powerlevel10k falls back to ASCII icons unless the locale codeset is UTF-8
+RUN sed -i 's/^# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen \
+    && locale-gen
+ENV LANG=en_US.UTF-8 \
+    LC_ALL=en_US.UTF-8
+
+# -----------------------------------------------------------------------------
+# Shell Environment (zsh + oh-my-zsh + Powerlevel10k)
+# -----------------------------------------------------------------------------
+# JupyterLab's terminal runs whatever ServerApp.terminado_settings points at
+# (see docker-compose.yml). Everything below prepares that shell.
+ENV ZSH=/root/.oh-my-zsh \
+    ZSH_CUSTOM=/root/.oh-my-zsh/custom \
+    SHELL=/bin/zsh \
+    GITSTATUS_CACHE_DIR=/opt/gitstatus
+
+RUN git clone --depth=1 https://github.com/ohmyzsh/ohmyzsh.git "$ZSH" \
+    && git clone --depth=1 https://github.com/zsh-users/zsh-autosuggestions.git \
+        "$ZSH_CUSTOM/plugins/zsh-autosuggestions" \
+    && git clone --depth=1 https://github.com/zsh-users/zsh-syntax-highlighting.git \
+        "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting" \
+    && git clone --depth=1 https://github.com/zsh-users/zsh-completions.git \
+        "$ZSH_CUSTOM/plugins/zsh-completions" \
+    && git clone --depth=1 https://github.com/romkatv/powerlevel10k.git \
+        "$ZSH_CUSTOM/themes/powerlevel10k"
+
+# Pre-download the gitstatusd daemon at build time so the first prompt is fast.
+# It must NOT live under /root/.cache (its default): that path is a bind mount
+# at runtime and would hide anything baked into the image.
+RUN "$ZSH_CUSTOM/themes/powerlevel10k/gitstatus/install" \
+    && ls -l /opt/gitstatus
+
+# Prompt configuration, copied from the host's ~/.p10k.zsh
+COPY p10k.zsh /root/.p10k.zsh
+COPY zshrc /root/.zshrc
 
 # -----------------------------------------------------------------------------
 # Python Environment Setup
