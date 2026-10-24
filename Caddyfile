@@ -13,6 +13,18 @@
 		}
 	}
 
+	# Security headers (README § Security headers). Each line sets its header only when
+	# code-server's response lacks it, so the workbench keeps its own Content-Security-Policy.
+	# One directive per header: inside a single header block, `?` defaults apply only when
+	# every field of the block is missing. Framing is limited to this origin, not refused:
+	# webviews (notebook outputs, previews) and the extension host run in same-origin iframes.
+	header ?Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	header ?Content-Security-Policy "frame-ancestors 'self'"
+	header ?X-Frame-Options SAMEORIGIN
+	header ?X-Content-Type-Options nosniff
+	header ?Referrer-Policy strict-origin-when-cross-origin
+	header ?Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+
 	# WebSockets (editor, terminal, kernels) are proxied transparently.
 	reverse_proxy code-server:8080
 

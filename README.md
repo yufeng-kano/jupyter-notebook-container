@@ -22,6 +22,32 @@ No host port is published. `../network/nginx-proxy` routes by SNI to `jupyter-ca
 which owns the certificate (TLS-ALPN-01) and proxies to code-server. HTTPS is required:
 VS Code webviews, which render notebook outputs, only work in a secure context.
 
+## Security headers
+
+code-server sends no security headers of its own except the workbench page's
+`Content-Security-Policy`. Caddy adds the missing ones:
+
+| Header | Value |
+|--------|-------|
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` |
+| `Content-Security-Policy` | `frame-ancestors 'self'` |
+| `X-Frame-Options` | `SAMEORIGIN` |
+| `X-Content-Type-Options` | `nosniff` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `Permissions-Policy` | camera, microphone, geolocation, payment and USB off |
+
+- Each header is set only when code-server's response lacks it. The workbench keeps its own
+  strict `Content-Security-Policy` (per-request nonce) unchanged.
+- Framing is limited to this origin, not refused: webviews (notebook outputs, Markdown
+  preview) and the web worker extension host load in same-origin iframes. Another site
+  cannot frame the editor.
+- Each header is its own `header ?Field value` line. Inside one `header` block, `?` defaults
+  apply only when every field of the block is missing.
+
+The Caddyfile is bind-mounted as a single file. `git pull` replaces the file and the running
+container keeps reading the old one, so a Caddyfile change takes `docker compose restart caddy`,
+not `caddy reload`. Only Caddy restarts: open connections drop once, code-server keeps running.
+
 ## Persistence
 
 The home directory and the extensions directory are named volumes, so the container
